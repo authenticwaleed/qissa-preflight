@@ -2,7 +2,7 @@
 
 A file starts at 10 and loses points for each problem below; the score never goes under 1.
 The score means "ready for retail" rather than "sounds nice": the thresholds follow Audible's
-published ACX audio requirements (MP3 at 192 kbps or more, constant bit rate, 44.1 kHz, files up
+published ACX audio requirements (MP3 at 192 kbps or more, constant bitrate, 44.1 kHz, files up
 to 170 MB). That is why 48 kHz and VBR lose points although they can sound fine.
 
 | Code                   | Problem                                                | Points        |
@@ -75,7 +75,7 @@ def _low_bitrate(info: AudioInfo) -> Deduction | None:
         points = 5
     else:
         points = 7
-    message = f"{kbps} kbps is below the {ACX_MIN_BITRATE_KBPS} kbps minimum that ACX requires."
+    message = f"{kbps} kbps; ACX requires at least {ACX_MIN_BITRATE_KBPS} kbps."
     return Deduction("LOW_BITRATE", points, message)
 
 
@@ -101,10 +101,7 @@ def _bitrate_mode(info: AudioInfo) -> Deduction | None:
     if mode == BitrateMode.CBR:
         return None
     if mode == BitrateMode.UNKNOWN:
-        message = (
-            "The file does not say whether its bitrate is constant; "
-            "ACX requires constant bitrate (CBR)."
-        )
+        message = "Unknown bitrate mode; ACX requires constant bitrate (CBR)."
         return Deduction("BITRATE_MODE_UNKNOWN", 1, message)
     message = f"{_NOT_CBR_NAMES[mode]}; ACX requires constant bitrate (CBR)."
     return Deduction("NOT_CBR", 2, message)
@@ -113,7 +110,9 @@ def _bitrate_mode(info: AudioInfo) -> Deduction | None:
 def _over_retail_size_limit(info: AudioInfo) -> Deduction | None:
     if info.size_bytes <= RETAIL_MAX_FILE_BYTES:
         return None
-    message = f"{info.size_bytes:,} bytes; ACX accepts files up to {RETAIL_MAX_FILE_BYTES:,} bytes."
+    message = (
+        f"{info.size_bytes:,} bytes; ACX requires at most {RETAIL_MAX_FILE_BYTES:,} bytes per file."
+    )
     return Deduction("OVER_RETAIL_SIZE_LIMIT", 2, message)
 
 

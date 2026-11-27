@@ -107,9 +107,7 @@ def test_truncation_needs_a_bitrate_and_a_duration(
     [
         (
             chapter(bitrate_kbps=128),
-            Deduction(
-                "LOW_BITRATE", 3, "128 kbps is below the 192 kbps minimum that ACX requires."
-            ),
+            Deduction("LOW_BITRATE", 3, "128 kbps; ACX requires at least 192 kbps."),
         ),
         (
             chapter(sample_rate_hz=48_000),
@@ -128,8 +126,7 @@ def test_truncation_needs_a_bitrate_and_a_duration(
             Deduction(
                 "BITRATE_MODE_UNKNOWN",
                 1,
-                "The file does not say whether its bitrate is constant; "
-                "ACX requires constant bitrate (CBR).",
+                "Unknown bitrate mode; ACX requires constant bitrate (CBR).",
             ),
         ),
         (
@@ -137,7 +134,7 @@ def test_truncation_needs_a_bitrate_and_a_duration(
             Deduction(
                 "OVER_RETAIL_SIZE_LIMIT",
                 2,
-                "180,000,000 bytes; ACX accepts files up to 170,000,000 bytes.",
+                "180,000,000 bytes; ACX requires at most 170,000,000 bytes per file.",
             ),
         ),
         (

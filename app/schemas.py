@@ -23,7 +23,7 @@ class DurationOut(BaseModel):
     formatted: str = Field(description="mm:ss, or h:mm:ss from one hour.", examples=["24:01"])
     is_outlier: bool
     outlier_reason: str | None = Field(
-        default=None, examples=["4.0× the median chapter of this book (24:01)"]
+        default=None, examples=["3.04× the median chapter of this book (24:01)."]
     )
 
 
