@@ -1,8 +1,9 @@
 """Errors that the API returns as {"error": {"code": ..., "message": ...}}.
 
 Each error carries its HTTP status and a stable code that clients can rely on. The API layer adds
-two more codes: VALIDATION_ERROR (422, a missing or invalid form field or path parameter) and
-INTERNAL_ERROR (500, never with a stack trace).
+VALIDATION_ERROR (422, a missing or invalid form field or path parameter) and INTERNAL_ERROR (500,
+never with a stack trace). Errors raised by the framework itself use the status name as their code:
+NOT_FOUND for an unknown path, METHOD_NOT_ALLOWED, and BAD_REQUEST for a malformed multipart body.
 """
 
 
