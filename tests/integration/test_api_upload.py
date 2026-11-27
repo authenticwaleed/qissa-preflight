@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
@@ -46,7 +46,7 @@ EXPECTED_PROPERTIES: dict[str, tuple[float, str, int, str, int, int, int]] = {
 
 def post_upload(
     client: TestClient, data: bytes, filename: str, *, book_id: str | None = None
-) -> httpx.Response:
+) -> httpx2.Response:
     form = None if book_id is None else {"book_id": book_id}
     return client.post("/api/upload", files={"file": (filename, data, "audio/mpeg")}, data=form)
 
@@ -215,3 +215,16 @@ def test_the_client_filename_is_never_used_in_a_storage_path(
     expected = storage_path(settings.storage_dir, hashlib.sha256(data).hexdigest())
     assert stored_files(settings.storage_dir) == [expected]
     assert not (settings.storage_dir.parent / "escape.mp3").exists()
+
+
+@pytest.mark.parametrize(
+    "sent",
+    ["../Chapter 01.mp3", "book/part-1/Chapter 01.mp3", "book\\part-1\\Chapter 01.mp3"],
+    ids=["parent folder", "forward slashes", "backslashes"],
+)
+def test_the_filename_shown_is_the_last_part_of_the_client_path(
+    client: TestClient, fixture_file: Callable[[str], Path], sent: str
+) -> None:
+    body = upload_ok(client, fixture_file(CH01).read_bytes(), sent)
+
+    assert body["filename"] == "Chapter 01.mp3"

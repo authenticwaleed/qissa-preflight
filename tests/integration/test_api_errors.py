@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, func, select
@@ -36,7 +36,7 @@ def post_upload(
     book_id: str | None = None,
     content_type: str = "audio/mpeg",
     headers: dict[str, str] | None = None,
-) -> httpx.Response:
+) -> httpx2.Response:
     form = None if book_id is None else {"book_id": book_id}
     return client.post(
         "/api/upload",
@@ -46,7 +46,7 @@ def post_upload(
     )
 
 
-def assert_error(response: httpx.Response, status: int, code: str | None = None) -> None:
+def assert_error(response: httpx2.Response, status: int, code: str | None = None) -> None:
     """The response is an error with this status, the standard body and (if given) this code."""
     assert response.status_code == status, response.text
     body = response.json()
@@ -215,6 +215,19 @@ def test_a_book_id_longer_than_100_characters_is_rejected(
     assert_nothing_stored(settings, db_engine)
 
 
+def test_a_book_id_with_control_characters_is_rejected(
+    client: TestClient,
+    fixture_file: Callable[[str], Path],
+    settings: Settings,
+    db_engine: Engine,
+) -> None:
+    # PostgreSQL refuses NUL in text, so it must be turned away before anything is stored.
+    response = post_upload(client, fixture_file(CH01).read_bytes(), CH01, book_id="book\x001")
+
+    assert_error(response, 422, "VALIDATION_ERROR")
+    assert_nothing_stored(settings, db_engine)
+
+
 def test_a_file_over_the_size_limit_is_rejected(
     make_client: Callable[..., TestClient],
     fixture_file: Callable[[str], Path],
@@ -311,6 +324,32 @@ def test_a_very_long_filename_does_not_cause_a_server_error(
     else:
         assert response.status_code == 201, response.text
         assert len(response.json()["filename"]) <= 255
+
+
+def test_control_characters_in_the_filename_do_not_cause_a_server_error(
+    client: TestClient, fixture_file: Callable[[str], Path]
+) -> None:
+    """PostgreSQL refuses NUL in text. httpx percent-encodes control characters in filenames,
+    so this multipart body is written by hand to send them as raw bytes."""
+    boundary = "chapter-boundary"
+    body = (
+        f"--{boundary}\r\n".encode()
+        + b'Content-Disposition: form-data; name="file"; filename="Chap\x00ter\t01.mp3"\r\n'
+        + b"Content-Type: audio/mpeg\r\n\r\n"
+        + fixture_file(CH01).read_bytes()
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+
+    response = client.post(
+        "/api/upload",
+        content=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+
+    assert response.status_code == 201, response.text
+    filename = response.json()["filename"]
+    assert filename.endswith(".mp3")
+    assert not any(ord(char) < 0x20 or ord(char) == 0x7F for char in filename), repr(filename)
 
 
 @pytest.mark.skipif(RUNNING_AS_ROOT, reason="root can write to read-only folders")

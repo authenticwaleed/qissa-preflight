@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 BOOK_ID_MAX_LENGTH = 100  # uploads.book_id is VARCHAR(100)
+# No control characters: PostgreSQL rejects NUL in text, and none of them belongs in an id.
+BOOK_ID_PATTERN = r"^[^\x00-\x1f\x7f]*$"
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -64,7 +66,8 @@ SettingsDep = Annotated[Settings, Depends(get_app_settings)]
         422: {
             "model": ErrorOut,
             "description": "EMPTY_FILE: the file has no bytes. "
-            "VALIDATION_ERROR: `file` is missing or `book_id` is too long.",
+            "VALIDATION_ERROR: `file` is missing, or `book_id` is too long or holds control "
+            "characters.",
         },
     },
 )
@@ -78,6 +81,7 @@ def upload_chapter(
         str | None,
         Form(
             max_length=BOOK_ID_MAX_LENGTH,
+            pattern=BOOK_ID_PATTERN,
             description="Optional. The book this chapter belongs to: its duration is then "
             "compared with the book's earlier chapters.",
         ),

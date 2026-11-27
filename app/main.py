@@ -82,8 +82,10 @@ class UploadSizeGuard:
     """Refuses an upload whose Content-Length is already over the limit, before any of the body
     is read, so a narrator is not left sending hundreds of MB only to be refused at the end.
 
-    A request without a Content-Length (chunked) passes: the service counts its bytes while
-    storing them.
+    A request without a Content-Length (chunked) passes and is received in full first: FastAPI
+    parses the whole multipart form before the endpoint runs, and Starlette spools the file part
+    to the system temp folder. Only then does the service's byte count refuse it. In production
+    a body size limit at the reverse proxy bounds this.
     """
 
     def __init__(self, app: ASGIApp, max_body_bytes: int, max_upload_mb: int) -> None:

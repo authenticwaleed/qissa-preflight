@@ -39,10 +39,11 @@ def process_upload(
        at most 255 characters.
     2. storage.stage(stream, settings.max_upload_bytes) (FileTooLarge); 0 bytes -> EmptyFile.
     3. read_audio_info(staged.path) (InvalidMp3), then score_quality(info).
-    4. repository.insert_audio_if_new(...): new audio -> storage.commit(staged);
-       known audio -> storage.discard(staged) and repository.find_original_upload(sha256).
-    5. With a book_id: repository.book_duration_stats(book_id), read before this upload is
+    4. With a book_id: repository.book_duration_stats(book_id), read before this upload is
        inserted; then check_duration(...) with the rule built from settings.
+    5. repository.insert_audio_if_new(...); known audio -> repository.find_original_upload(sha256).
+       Then storage.commit(staged), new or known: it keeps a file that is already stored and
+       drops the copy, and it puts the bytes back if the stored file has gone missing.
     6. repository.add_upload(...), then session.commit().
     On any error: discard the staged file, roll back, re-raise.
     """
@@ -54,8 +55,8 @@ def process_upload(
             raise EmptyFile("The file is empty.")
         info = read_audio_info(staged.path)
         quality = score_quality(info)
-        original = _store_audio(session, storage, staged, info, quality)
         outlier = _check_duration(session, settings, book_id, info.duration_seconds)
+        original = _store_audio(session, storage, staged, info, quality)
         upload = repository.add_upload(
             session,
             sha256=staged.sha256,
@@ -70,8 +71,8 @@ def process_upload(
         session.rollback()
         raise
     finally:
-        # A no-op once the file was committed or discarded; on every other path it is the
-        # cleanup that keeps temp files from piling up.
+        # A no-op once the file was committed; on every error path it is the cleanup that keeps
+        # temp files from piling up.
         storage.discard(staged)
 
     logger.info(
@@ -113,10 +114,10 @@ def _store_audio(
     info: AudioInfo,
     quality: QualityResult,
 ) -> Upload | None:
-    """Keep the file and its analysis unless the same bytes are already stored.
+    """Keep the file and its analysis once per unique audio.
 
-    Returns the original upload of those bytes, or None when this upload is the first, which is
-    also the case for known audio whose original upload row is gone.
+    Returns the original upload of the same bytes, or None when this upload is the first, which
+    is also the case for known audio whose original upload row is gone.
     """
     is_new = repository.insert_audio_if_new(
         session,
@@ -125,13 +126,12 @@ def _store_audio(
         info=info,
         quality=quality,
     )
-    if is_new:
-        # The file goes in place before the transaction commits: a crash in between leaves a
-        # stray file, never a row that points at a missing file.
-        storage.commit(staged)
-        return None
-    storage.discard(staged)
-    return repository.find_original_upload(session, staged.sha256)
+    original = None if is_new else repository.find_original_upload(session, staged.sha256)
+    # The last step before the transaction commits, so that a failure in between leaves at most
+    # a stray file, never a row that points at a missing file. For known audio this also
+    # restores the stored file if it has gone missing.
+    storage.commit(staged)
+    return original
 
 
 def _check_duration(

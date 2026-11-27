@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, func, select
 
@@ -28,7 +28,7 @@ CONCURRENT_UPLOADS = 8
 
 def post_upload(
     client: TestClient, data: bytes, filename: str, *, book_id: str | None = None
-) -> httpx.Response:
+) -> httpx2.Response:
     form = None if book_id is None else {"book_id": book_id}
     return client.post("/api/upload", files={"file": (filename, data, "audio/mpeg")}, data=form)
 
@@ -98,7 +98,7 @@ def test_a_duplicate_gets_its_own_upload_row_and_shares_the_stored_audio(
     second = upload_ok(client, data, "b.mp3")
 
     with db_engine.connect() as conn:
-        uploads = dict(conn.execute(select(Upload.id, Upload.duplicate_of_id)).tuples().all())
+        uploads = dict(conn.execute(select(Upload.id, Upload.duplicate_of_id)).all())
 
     assert uploads == {
         uuid.UUID(first["id"]): None,
@@ -163,6 +163,21 @@ def test_a_retagged_copy_of_the_same_audio_is_not_an_exact_duplicate(
     assert len(stored_files(settings.storage_dir)) == 2
 
 
+def test_uploading_the_same_bytes_again_restores_a_lost_file(
+    client: TestClient, fixture_file: Callable[[str], Path], settings: Settings
+) -> None:
+    data = fixture_file(CH01).read_bytes()
+    first = upload_ok(client, data, "chapter-01.mp3")
+    stored = storage_path(settings.storage_dir, first["file"]["sha256"])
+    stored.unlink()  # the disk lost it
+
+    again = upload_ok(client, data, "chapter-01.mp3")
+
+    assert again["duplicate"]["original"]["id"] == first["id"]
+    assert stored.read_bytes() == data
+    assert stored_files(settings.storage_dir) == [stored]
+
+
 def test_concurrent_uploads_of_the_same_new_file_make_exactly_one_original(
     client: TestClient,
     fixture_file: Callable[[str], Path],
@@ -172,7 +187,7 @@ def test_concurrent_uploads_of_the_same_new_file_make_exactly_one_original(
     data = fixture_file(CH01).read_bytes()
     start = threading.Barrier(CONCURRENT_UPLOADS, timeout=30)
 
-    def upload(index: int) -> httpx.Response:
+    def upload(index: int) -> httpx2.Response:
         start.wait()  # release every upload at the same moment
         return post_upload(client, data, f"copy-{index}.mp3")
 
