@@ -1,0 +1,38 @@
+[project]
+name = "qissa-preflight"
+version = "0.1.0"
+description = "Checks audiobook chapter MP3s on upload: duration, quality score and duplicates."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "fastapi>=0.165.0",
+    "mutagen>=1.48.1",
+    "psycopg[binary]>=3.3.9",
+    "pydantic-settings>=2.16.3",
+    "python-multipart>=0.0.34",
+    "sqlalchemy>=2.1.9",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+# Allow typographic characters such as "×" and "–" in messages and docstrings.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --import-mode=importlib"
+markers = ["integration: needs PostgreSQL (start it with: docker compose up -d db)"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.29.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]

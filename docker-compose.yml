@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: qissa
+      POSTGRES_PASSWORD: qissa
+      POSTGRES_DB: qissa
+    ports:
+      - "5433:5432" # 5433 on the host, so a local PostgreSQL on 5432 doesn't clash
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qissa -d qissa"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://qissa:qissa@db:5432/qissa
+      STORAGE_DIR: /data/audio
+    ports:
+      - "8000:8000"
+    volumes:
+      - audio:/data/audio
+
+volumes:
+  pgdata:
+  audio:
