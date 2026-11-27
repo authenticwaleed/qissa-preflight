@@ -1,0 +1,18 @@
+# The image needs only app/, migrations/, alembic.ini, pyproject.toml and uv.lock. Leaving the rest
+# out keeps the build context small, and local secrets and uploaded audio out of the image.
+.git
+.github
+.venv
+.env
+data
+tests
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+.DS_Store
+.idea
+.vscode

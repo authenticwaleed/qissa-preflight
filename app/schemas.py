@@ -4,11 +4,12 @@ UploadOut has one block per client requirement: duration (2), quality (3) and du
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.audio import format_duration
 from app.models import Upload
 
 
@@ -87,4 +88,39 @@ def to_upload_out(upload: Upload) -> UploadOut:
 
     POST /api/upload and GET /api/uploads/{id} both use this, so the two always match.
     """
-    raise NotImplementedError
+    audio = upload.audio
+    original = upload.duplicate_of
+    return UploadOut(
+        id=upload.id,
+        filename=upload.original_filename,
+        book_id=upload.book_id,
+        # PostgreSQL returns timestamps in the session's time zone; the API always speaks UTC.
+        uploaded_at=upload.created_at.astimezone(UTC),
+        file=FileOut(size_bytes=audio.size_bytes, sha256=audio.sha256.hex()),
+        duration=DurationOut(
+            seconds=round(audio.duration_seconds, 2),
+            formatted=format_duration(audio.duration_seconds),
+            is_outlier=upload.is_duration_outlier,
+            outlier_reason=upload.outlier_reason,
+        ),
+        quality=QualityOut(
+            score=audio.quality_score,
+            bitrate_kbps=audio.bitrate_kbps,
+            bitrate_mode=audio.bitrate_mode,
+            sample_rate_hz=audio.sample_rate_hz,
+            channels=audio.channels,
+            deductions=[DeductionOut.model_validate(item) for item in audio.quality_deductions],
+        ),
+        duplicate=DuplicateOut(
+            is_duplicate=upload.duplicate_of_id is not None,
+            original=None
+            if original is None
+            else OriginalUploadOut(
+                id=original.id,
+                filename=original.original_filename,
+                book_id=original.book_id,
+                uploaded_at=original.created_at.astimezone(UTC),
+                url=f"/api/uploads/{original.id}",
+            ),
+        ),
+    )
