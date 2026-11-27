@@ -11,6 +11,8 @@ Two checks, both with strict inequalities:
 
 from dataclasses import dataclass
 
+from app.audio import format_duration
+
 
 @dataclass(frozen=True, slots=True)
 class OutlierRule:
@@ -34,4 +36,30 @@ def check_duration(
     book_chapter_count: int = 0,
 ) -> OutlierResult:
     """Apply the fixed limits first, then the book comparison when there is enough history."""
-    raise NotImplementedError
+    reason = _fixed_limit_reason(duration_seconds, rule)
+    if reason is None:
+        reason = _book_reason(duration_seconds, rule, book_median_seconds, book_chapter_count)
+    return OutlierResult(is_outlier=reason is not None, reason=reason)
+
+
+def _fixed_limit_reason(duration_seconds: float, rule: OutlierRule) -> str | None:
+    if duration_seconds < rule.min_seconds:
+        return f"Shorter than {rule.min_seconds:g} s; probably an empty or broken export."
+    if duration_seconds > rule.max_seconds:
+        return f"Longer than {format_duration(rule.max_seconds)}, the per-file limit."
+    return None
+
+
+def _book_reason(
+    duration_seconds: float,
+    rule: OutlierRule,
+    median_seconds: float | None,
+    chapter_count: int,
+) -> str | None:
+    # With only a chapter or two, the "typical chapter" is just whichever came first.
+    if median_seconds is None or chapter_count < rule.min_chapters:
+        return None
+    if median_seconds / rule.ratio <= duration_seconds <= median_seconds * rule.ratio:
+        return None
+    times = duration_seconds / median_seconds
+    return f"{times:.1f}× the median chapter of this book ({format_duration(median_seconds)})."
