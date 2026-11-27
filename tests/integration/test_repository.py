@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app import repository
 from app.audio import AudioInfo, BitrateMode
+from app.db import make_engine
 from app.models import AudioFile, Upload
 from app.scoring import Deduction, QualityResult
 from app.storage import LocalStorage
@@ -113,9 +114,9 @@ def test_insert_audio_if_new_stores_the_analysis(db_session: Session) -> None:
     quality = QualityResult(
         score=1,
         deductions=(
-            Deduction("LOW_BITRATE", 5, "122 kbps is below the 192 kbps retailers ask for."),
-            Deduction("SAMPLE_RATE_OFF_SPEC", 4, "22,050 Hz instead of 44,100 Hz."),
-            Deduction("NOT_CBR", 2, "Variable bit rate instead of constant (CBR)."),
+            Deduction("LOW_BITRATE", 5, "first message"),
+            Deduction("SAMPLE_RATE_OFF_SPEC", 4, "second message"),
+            Deduction("NOT_CBR", 2, "third message"),
         ),
     )
 
@@ -150,7 +151,7 @@ def test_add_upload_then_get_upload(db_session: Session) -> None:
         book_id="book-1",
         duplicate_of_id=None,
         is_duration_outlier=True,
-        outlier_reason="Shorter than 30 seconds.",
+        outlier_reason="an outlier reason",
     )
     # Detached, nothing more can be loaded: the id and the server default must already be set.
     db_session.expunge(upload)
@@ -163,7 +164,7 @@ def test_add_upload_then_get_upload(db_session: Session) -> None:
     assert found.original_filename == "Chapter 01.mp3"
     assert found.book_id == "book-1"
     assert found.is_duration_outlier is True
-    assert found.outlier_reason == "Shorter than 30 seconds."
+    assert found.outlier_reason == "an outlier reason"
     assert found.created_at == upload.created_at
     assert found.audio.sha256 == sha256
     assert repository.get_upload(db_session, uuid.uuid4()) is None
@@ -231,6 +232,20 @@ def test_only_one_original_upload_per_audio(db_session: Session) -> None:
         add_upload(db_session, sha256)  # a second original is not
 
     assert caught.value.orig.diag.constraint_name == "uq_uploads_original_sha256"
+
+
+def test_errors_from_the_app_engine_leave_out_the_values_sent(database_url: str) -> None:
+    """A failed statement's exception, which ends up in the logs, does not echo user input."""
+    engine = make_engine(database_url)
+    try:
+        with Session(engine) as session, pytest.raises(IntegrityError) as caught:
+            # No audio_files row for this digest: the foreign key rejects the upload.
+            add_upload(session, digest("unknown audio"), book_id="private-book-id")
+    finally:
+        engine.dispose()
+
+    assert "private-book-id" not in str(caught.value)
+    assert "chapter.mp3" not in str(caught.value)
 
 
 def wait_until(condition: Callable[[], bool], timeout: float = 10.0) -> bool:

@@ -42,6 +42,9 @@ class LocalStorage:
         Never holds the whole file in memory. Past ``max_bytes`` it deletes the temp file and
         raises app.errors.FileTooLarge.
         """
+        # A staging folder removed at runtime (by a cleanup job, say) comes back. A missing root
+        # does not: that is a lost volume, which the health check should report.
+        self.tmp_dir.mkdir(exist_ok=True)
         path = self.tmp_dir / f"{uuid.uuid4().hex}.part"
         digest = hashlib.sha256()
         size = 0

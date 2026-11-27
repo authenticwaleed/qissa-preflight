@@ -65,11 +65,24 @@ def test_creates_its_folders_and_reports_them_writable(tmp_path: Path) -> None:
     assert storage.is_writable()
 
 
-def test_is_not_writable_once_its_folder_is_gone(root: Path) -> None:
+def test_a_lost_storage_folder_is_reported_not_recreated(root: Path) -> None:
     storage = LocalStorage(root)
     shutil.rmtree(root)
 
     assert not storage.is_writable()
+    with pytest.raises(FileNotFoundError):
+        storage.stage(io.BytesIO(b"audio"), max_bytes=100)
+    assert not root.exists()
+
+
+def test_stage_recreates_a_deleted_staging_folder(storage: LocalStorage, root: Path) -> None:
+    shutil.rmtree(root / "tmp")
+    data = payload(1000)
+
+    staged = storage.stage(io.BytesIO(data), max_bytes=len(data))
+
+    assert staged.path.read_bytes() == data
+    storage.discard(staged)
 
 
 def test_stage_hashes_while_copying_in_chunks(storage: LocalStorage, root: Path) -> None:
